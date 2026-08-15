@@ -22,6 +22,7 @@ const state = {
   pantry: load(STORE_PANTRY, DEFAULT_PANTRY),
   salt: load(STORE_SALT, {}),
   meal: 'breakfast',
+  query: '',
   view: 'home',
   recipeId: null,
 };
@@ -89,6 +90,20 @@ function pickDaily(pool, mealName, n = 9) {
   return out;
 }
 
+/* ตัดช่องว่างและแปลงเป็นตัวพิมพ์เล็ก เพื่อให้ค้นหาไม่สนใจรูปแบบการพิมพ์ */
+const normSearch = (s) => String(s).toLowerCase().replace(/\s+/g, '');
+
+/* ดัชนีค้นหาชื่ออาหารจากทุกเมนูในคลัง (คำนวณครั้งเดียวตอนเปิดแอป) */
+const MEAL_LABEL = { bf: '🌅 เช้า', ln: '🎒 กลางวัน', dn: '🌙 เย็น' };
+const ALL_RECIPES = [...BREAKFAST, ...LUNCH, ...DINNER].map((r) => Object.assign({}, r, {
+  searchKey: normSearch(`${r.name}|${r.th}`),
+  mealLabel: MEAL_LABEL[r.id.slice(0, 2)],
+}));
+
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const escapeAttr = escapeHtml;
+
 function currentPool() {
   return state.meal === 'breakfast' ? BREAKFAST : state.meal === 'lunch' ? LUNCH : DINNER;
 }
@@ -100,18 +115,6 @@ function findRecipe(id) {
 const app = document.getElementById('app');
 
 function renderHome() {
-  const items = pickDaily(currentPool(), state.meal);
-  const meals = [
-    { key: 'breakfast', th: 'เช้า', en: 'Breakfast', emoji: '🌅' },
-    { key: 'lunch', th: 'กลางวัน', en: 'Lunch', emoji: '🎒' },
-    { key: 'dinner', th: 'เย็น', en: 'Dinner', emoji: '🌙' },
-  ];
-  const note = {
-    breakfast: 'อาหารเช้าสไตล์ฝรั่งง่าย ๆ จากวัตถุดิบที่บ้านมี',
-    lunch: 'กล่องข้าวกลางวัน หยิบทานง่าย รวดเร็ว',
-    dinner: 'มื้อหนัก เน้นข้าวหรือเส้น ให้พลังงานครบ',
-  }[state.meal];
-
   app.innerHTML = `
     <header class="topbar">
       <div class="brand">
@@ -132,6 +135,75 @@ function renderHome() {
       <button class="ghost-btn" id="btn-reroll">🎲 สุ่มใหม่</button>
     </div>
 
+    <div class="search-row">
+      <span class="search-icon">🔍</span>
+      <input id="home-search" type="search" value="${escapeAttr(state.query)}"
+             placeholder="ค้นหาชื่ออาหารจากทั้งหมด ${ALL_RECIPES.length} เมนู" autocomplete="off">
+      <button id="home-search-clear" class="search-clear" aria-label="ล้างคำค้นหา" ${state.query ? '' : 'hidden'}>×</button>
+    </div>
+
+    <div id="home-body"></div>
+  `;
+
+  document.getElementById('btn-settings').onclick = () => go('settings');
+  document.getElementById('btn-reroll').onclick = () => {
+    const k = todayKey();
+    state.salt[k] = (state.salt[k] || 0) + 1;
+    save(STORE_SALT, state.salt);
+    renderHomeBody();
+  };
+
+  const search = document.getElementById('home-search');
+  const clearBtn = document.getElementById('home-search-clear');
+  search.oninput = () => {
+    state.query = search.value;
+    clearBtn.hidden = !state.query;
+    renderHomeBody();
+  };
+  clearBtn.onclick = () => {
+    state.query = '';
+    search.value = '';
+    clearBtn.hidden = true;
+    renderHomeBody();
+    search.focus();
+  };
+
+  renderHomeBody();
+}
+
+/* ส่วนที่เปลี่ยนตามแท็บ/คำค้นหา แยกออกมาเพื่อไม่ให้ช่องค้นหาเสียโฟกัสตอนพิมพ์ */
+function renderHomeBody() {
+  const body = document.getElementById('home-body');
+  if (!body) return;
+
+  const q = normSearch(state.query);
+  body.innerHTML = q ? searchView(q) : dailyView();
+
+  body.querySelectorAll('.tab').forEach((t) => {
+    t.onclick = () => { state.meal = t.dataset.meal; renderHomeBody(); window.scrollTo({ top: 0 }); };
+  });
+  const strip = body.querySelector('#pantry-strip');
+  if (strip) strip.onclick = () => go('settings');
+  body.querySelectorAll('.card').forEach((c) => {
+    c.onclick = () => go('recipe', c.dataset.id);
+  });
+}
+
+/* มุมมองปกติ: เมนูประจำวันแยกตามมื้อ */
+function dailyView() {
+  const meals = [
+    { key: 'breakfast', th: 'เช้า', en: 'Breakfast', emoji: '🌅' },
+    { key: 'lunch', th: 'กลางวัน', en: 'Lunch', emoji: '🎒' },
+    { key: 'dinner', th: 'เย็น', en: 'Dinner', emoji: '🌙' },
+  ];
+  const note = {
+    breakfast: 'อาหารเช้าสไตล์ฝรั่งง่าย ๆ จากวัตถุดิบที่บ้านมี',
+    lunch: 'กล่องข้าวกลางวัน หยิบทานง่าย รวดเร็ว',
+    dinner: 'มื้อหนัก เน้นข้าวหรือเส้น ให้พลังงานครบ',
+  }[state.meal];
+  const items = pickDaily(currentPool(), state.meal);
+
+  return `
     <nav class="tabs" role="tablist">
       ${meals.map((m) => `
         <button class="tab ${state.meal === m.key ? 'active' : ''}" data-meal="${m.key}" role="tab" aria-selected="${state.meal === m.key}">
@@ -144,28 +216,35 @@ function renderHome() {
     <p class="meal-note">${note}</p>
     ${state.meal !== 'dinner' ? pantrySummary() : ''}
 
-    <div class="grid">
-      ${items.map((s) => card(s)).join('')}
-    </div>
+    <div class="grid">${items.map((s) => card(s)).join('')}</div>
 
     <footer class="foot">รายการเมนูจะเปลี่ยนใหม่ทุกวันโดยอัตโนมัติ 🌈</footer>
   `;
+}
 
-  document.getElementById('btn-settings').onclick = () => go('settings');
-  const strip = document.getElementById('pantry-strip');
-  if (strip) strip.onclick = () => go('settings');
-  document.getElementById('btn-reroll').onclick = () => {
-    const k = todayKey();
-    state.salt[k] = (state.salt[k] || 0) + 1;
-    save(STORE_SALT, state.salt);
-    renderHome();
-  };
-  app.querySelectorAll('.tab').forEach((t) => {
-    t.onclick = () => { state.meal = t.dataset.meal; renderHome(); window.scrollTo({ top: 0 }); };
-  });
-  app.querySelectorAll('.card').forEach((c) => {
-    c.onclick = () => go('recipe', c.dataset.id);
-  });
+/* มุมมองค้นหา: หาจากทุกเมนูในคลัง ไม่ใช่แค่ 9 เมนูของวันนี้ */
+const SEARCH_LIMIT = 48;
+
+function searchView(q) {
+  const hits = ALL_RECIPES.filter((r) => r.searchKey.includes(q));
+  if (!hits.length) {
+    return `<p class="search-empty">ไม่พบเมนูชื่อ "${escapeHtml(state.query)}" ลองพิมพ์คำอื่นดูนะ</p>`;
+  }
+  const shown = hits.slice(0, SEARCH_LIMIT);
+  const more = hits.length > SEARCH_LIMIT
+    ? `<span class="muted"> (แสดง ${SEARCH_LIMIT} รายการแรก)</span>` : '';
+
+  return `
+    <p class="search-count">พบ <b>${hits.length}</b> เมนู${more}</p>
+    <div class="grid">
+      ${shown.map((r) => card({
+        r,
+        missing: (r.needs || []).filter((k) => !state.pantry.includes(k)),
+        meal: r.mealLabel,
+      })).join('')}
+    </div>
+    <footer class="foot">แตะที่เมนูเพื่อดูส่วนผสมและวิธีทำ 🍳</footer>
+  `;
 }
 
 function pantrySummary() {
@@ -183,13 +262,14 @@ function card(s) {
   const miss = s.missing.length
     ? `<span class="miss">ขาด ${s.missing.map((k) => ING_BY_KEY[k].th).join(', ')}</span>`
     : '';
+  const meal = s.meal ? `<span class="card-meal">${s.meal}</span>` : '';
   return `
     <button class="card" data-id="${r.id}">
       <div class="card-art">${drawFood(r, 150)}</div>
       <div class="card-body">
         <div class="card-name">${r.name}</div>
         <div class="card-th">${r.th}</div>
-        <div class="card-meta"><span class="time">⏱ ${r.time} นาที</span>${miss}</div>
+        <div class="card-meta">${meal}<span class="time">⏱ ${r.time} นาที</span>${miss}</div>
       </div>
     </button>`;
 }
@@ -355,7 +435,6 @@ function renderSettings() {
 }
 
 /* คำที่ใช้ค้นหาของวัตถุดิบแต่ละตัว (ไทย + อังกฤษ + คำพ้อง) */
-const normSearch = (s) => String(s).toLowerCase().replace(/\s+/g, '');
 function searchKey(ing) {
   return normSearch([ing.th, ing.en, ...ing.syn].join('|'));
 }
