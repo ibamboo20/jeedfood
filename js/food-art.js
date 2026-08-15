@@ -627,12 +627,23 @@ const BASE = {
     front: '',
   },
   bowl: {
-    back: SHADOW(104, 158, 66, 15) + E(100, 106, 76, 27, CL.bowlIn, 0, 5),
+    // ผิวในชาม: ถ้าเป็นเมนูน้ำซุปจะเปลี่ยนเป็นน้ำซุปพร้อมระลอกคลื่นและหยดน้ำมัน
+    back: (soup) =>
+      SHADOW(104, 150, 66, 14) +
+      E(100, 104, 76, 27, soup ? '#EDBE68' : CL.bowlIn, 0, 5) +
+      (soup
+        ? E(100, 106, 63, 21, '#F7D693', 0, 0) +
+          // ระลอกคลื่นและหยดน้ำมัน วางในช่วงที่อาหารไม่บัง
+          L('M-52,6 C-38,0 -26,8 -16,4', '#FFF0C8', 3.5).replace('<path', '<path transform="translate(100 106)"') +
+          L('M14,10 C26,4 38,12 50,6', '#FFF0C8', 3.5).replace('<path', '<path transform="translate(100 106)"') +
+          L('M-30,15 C-12,9 10,17 30,12', '#FFF0C8', 3).replace('<path', '<path transform="translate(100 106)"') +
+          C(56, 108, 4.5, '#FFE7AC', 0) + C(146, 112, 3.6, '#FFE7AC', 0) + C(132, 100, 2.8, '#FFE7AC', 0)
+        : ''),
     front:
-      P('M-76,0 C-72,44 -40,64 0,64 C40,64 72,44 76,0 C50,16 -50,16 -76,0 Z', CL.bowl, 5)
-        .replace('<path', '<path transform="translate(100 106)"') +
-      L('M-57,24 C-40,40 -18,46 2,46', '#D3F0FB', 6).replace('<path', '<path transform="translate(100 106)"') +
-      L('M-64,6 C-62,20 -56,30 -48,38', '#D3F0FB', 4).replace('<path', '<path transform="translate(100 106)"'),
+      P('M-76,0 C-73,36 -42,55 0,55 C42,55 73,36 76,0 C50,16 -50,16 -76,0 Z', CL.bowl, 5)
+        .replace('<path', '<path transform="translate(100 104)"') +
+      L('M-55,22 C-38,36 -16,42 3,42', '#D3F0FB', 6).replace('<path', '<path transform="translate(100 104)"') +
+      L('M-64,5 C-62,17 -57,27 -50,34', '#D3F0FB', 4).replace('<path', '<path transform="translate(100 104)"'),
   },
   box: {
     // กล่องเบนโตะไม้ — จัดอาหารเต็มกล่องด้วย drawBento()
@@ -681,10 +692,11 @@ function layout(baseName, n) {
   // ในชามต้องวางอาหารสูงขึ้น ไม่งั้นตัวชามจะบังชิ้นล่าง
   const sets = baseName === 'bowl'
     ? {
-        1: [[100, 88, 1.45]],
-        2: [[74, 84, 1.2], [130, 90, 1.08]],
-        3: [[68, 76, 1.0], [132, 74, 0.94], [100, 100, 0.98]],
-        4: [[66, 72, 0.86], [134, 70, 0.8], [76, 100, 0.84], [132, 98, 0.78]],
+        // วางให้ก้นอาหารจมลงไปในชาม ไม่ลอยอยู่เหนือผิว
+        1: [[100, 100, 1.3]],
+        2: [[76, 96, 1.12], [128, 102, 1.02]],
+        3: [[70, 90, 0.95], [130, 88, 0.9], [100, 110, 0.92]],
+        4: [[68, 86, 0.82], [132, 84, 0.78], [78, 110, 0.8], [130, 108, 0.76]],
       }
     : {
         1: [[100, 102, 1.5]],
@@ -788,7 +800,7 @@ function drawFood(recipe, size = 200) {
   if (heroIdx < 0) heroIdx = items.findIndex((n) => FACE_ON[n]);
   const kind = FACE_LIST[jitterPos(recipe.id) % FACE_LIST.length];
 
-  let inner = base.back;
+  let inner = typeof base.back === 'function' ? base.back(recipe.soup) : base.back;
   let faceLayer = '';
 
   items.forEach((name, i) => {
