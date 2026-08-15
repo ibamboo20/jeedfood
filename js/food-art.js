@@ -57,7 +57,7 @@ ${GRADS.map(([id, a, b]) =>
   `<linearGradient id="${id}" x1="0" y1="0" x2="0.25" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>`
 ).join('\n')}
 <radialGradient id="gYolkR" cx="0.38" cy="0.32" r="0.78"><stop offset="0" stop-color="#FFE88C"/><stop offset="1" stop-color="#EF9E1C"/></radialGradient>
-<radialGradient id="gTileBg" cx="0.5" cy="0.42" r="0.72"><stop offset="0" stop-color="#FBEBCB"/><stop offset="1" stop-color="#EAD3A6"/></radialGradient>
+<radialGradient id="gTileBg" cx="0.5" cy="0.42" r="0.72"><stop offset="0" stop-color="#FDF1F8"/><stop offset="1" stop-color="#F6D8EA"/></radialGradient>
 </defs></svg>`;
 
 const U = (id) => `url(#${id})`;

@@ -122,33 +122,6 @@ const MODIFIERS = [
 
 const norm = (s) => String(s).trim().toLowerCase().replace(/\s+/g, '');
 
-/** แปลงข้อความที่ผู้ใช้พิมพ์ -> key วัตถุดิบ (ถ้าเจอ) */
-function matchIngredient(text) {
-  const t = norm(text);
-  if (!t) return null;
-
-  // 1) ตรงเป๊ะ
-  for (const ing of INGREDIENTS) {
-    if (ing.syn.some((s) => norm(s) === t)) return ing.key;
-  }
-  // 2) ผู้ใช้พิมพ์ไม่จบคำ เช่น "อโว" -> อโวคาโด
-  if (t.length >= 2) {
-    for (const ing of INGREDIENTS) {
-      if (ing.syn.some((s) => norm(s).startsWith(t))) return ing.key;
-    }
-  }
-  // 3) ชื่อวัตถุดิบ + คำขยาย เช่น "ขนมปังโฮลวีต", "ไข่ต้ม"
-  for (const ing of INGREDIENTS) {
-    for (const s of ing.syn) {
-      const sl = norm(s);
-      if (sl.length >= 2 && t.startsWith(sl)) {
-        const rest = t.slice(sl.length);
-        if (MODIFIERS.includes(rest)) return ing.key;
-      }
-    }
-  }
-  return null;
-}
 
 /* รายการคำพ้องเรียงจากยาวไปสั้น เพื่อให้จับคำที่เจาะจงที่สุดก่อน
    (เช่น "ข้าวโพด" ต้องมาก่อน "ข้าว") */
@@ -379,4 +352,4 @@ function englishFor(line) {
   return out.slice(0, 3).join(' · ');
 }
 
-window.Ingredients = { INGREDIENTS, CATEGORIES, ING_BY_KEY, matchIngredient, englishFor };
+window.Ingredients = { INGREDIENTS, CATEGORIES, ING_BY_KEY, englishFor };

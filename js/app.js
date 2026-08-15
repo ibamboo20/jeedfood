@@ -5,12 +5,11 @@
 (function () {
 'use strict';
 
-const { INGREDIENTS, CATEGORIES, ING_BY_KEY, matchIngredient, englishFor } = window.Ingredients;
+const { INGREDIENTS, CATEGORIES, ING_BY_KEY, englishFor } = window.Ingredients;
 const { BREAKFAST, LUNCH, DINNER } = window.Recipes;
 const { drawFood, drawIcon } = window.FoodArt;
 
 const STORE_PANTRY = 'jeedfood.pantry.v1';
-const STORE_CUSTOM = 'jeedfood.custom.v1';
 const STORE_SALT = 'jeedfood.salt.v1';
 
 const DEFAULT_PANTRY = ['egg', 'bread', 'sausage', 'milk', 'cheese', 'banana', 'rice', 'chicken', 'carrot', 'tomato'];
@@ -21,7 +20,6 @@ const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.�
 /* ---------------- state ---------------- */
 const state = {
   pantry: load(STORE_PANTRY, DEFAULT_PANTRY),
-  custom: load(STORE_CUSTOM, []),
   salt: load(STORE_SALT, {}),
   meal: 'breakfast',
   view: 'home',
@@ -268,15 +266,16 @@ function renderSettings() {
     </header>
 
     <p class="settings-lead">
-      เลือกวัตถุดิบหลักที่บ้านมีตอนนี้ แอปจะคิดเมนู <b>อาหารเช้า</b> และ <b>อาหารกลางวัน</b> อย่างละ 9 รายการจากของเหล่านี้ให้อัตโนมัติ
+      แตะเลือกวัตถุดิบที่บ้านมีตอนนี้ แอปจะคิดเมนู <b>อาหารเช้า</b> และ <b>อาหารกลางวัน</b> อย่างละ 9 รายการจากของเหล่านี้ให้อัตโนมัติ
       <br><span class="muted">(อาหารเย็นจะเป็นเมนูข้าว/เส้นที่มีสารอาหารครบ ไม่ขึ้นกับรายการนี้)</span>
     </p>
 
-    <div class="add-row">
-      <input id="ing-input" type="text" placeholder="พิมพ์ส่วนผสม เช่น ไข่, ขนมปัง, อโวคาโด" autocomplete="off">
-      <button id="ing-add" class="add-btn">เพิ่ม</button>
+    <div class="search-row">
+      <span class="search-icon">🔍</span>
+      <input id="ing-search" type="search" placeholder="ค้นหาส่วนผสม เช่น ไข่ หรือ egg" autocomplete="off">
+      <button id="search-clear" class="search-clear" aria-label="ล้างคำค้นหา" hidden>×</button>
     </div>
-    <div id="toast" class="toast"></div>
+    <p id="search-empty" class="search-empty" hidden>ไม่พบส่วนผสมที่ค้นหา ลองพิมพ์คำอื่นดูนะ</p>
 
     <div class="bulk-row">
       <span class="count">เลือกแล้ว <b id="cnt">${state.pantry.length}</b> อย่าง</span>
@@ -291,7 +290,8 @@ function renderSettings() {
         <h3 class="cat-title">${c.th}</h3>
         <div class="ing-grid">
           ${INGREDIENTS.filter((i) => i.cat === c.key).map((i) => `
-            <button class="ing ${state.pantry.includes(i.key) ? 'on' : ''}" data-key="${i.key}">
+            <button class="ing ${state.pantry.includes(i.key) ? 'on' : ''}" data-key="${i.key}"
+                    data-search="${searchKey(i)}">
               <span class="ing-art">${drawIcon(i.art, 40)}</span>
               <span class="ing-th">${i.th}</span>
               <span class="ing-en">${i.en}</span>
@@ -299,15 +299,6 @@ function renderSettings() {
             </button>`).join('')}
         </div>
       </section>`).join('')}
-
-    ${state.custom.length ? `
-      <section class="cat">
-        <h3 class="cat-title">ส่วนผสมที่จดไว้เอง</h3>
-        <div class="custom-row">
-          ${state.custom.map((t, i) => `<span class="custom-chip">${t}<button data-i="${i}" class="x">×</button></span>`).join('')}
-        </div>
-        <p class="muted small">รายการนี้จดไว้เตือนความจำ ยังไม่มีสูตรอาหารรองรับโดยตรง</p>
-      </section>` : ''}
 
     <div class="pad"></div>
   `;
@@ -336,47 +327,37 @@ function renderSettings() {
     renderSettings();
   };
 
-  const input = document.getElementById('ing-input');
-  const addIng = () => {
-    const raw = input.value.trim();
-    if (!raw) return;
-    raw.split(/[,،\n]+/).map((t) => t.trim()).filter(Boolean).forEach((t) => {
-      const key = matchIngredient(t);
-      if (key) {
-        if (!state.pantry.includes(key)) state.pantry.push(key);
-        toast(`เพิ่ม "${ING_BY_KEY[key].th}" แล้ว ✓`);
-      } else {
-        if (!state.custom.includes(t)) state.custom.push(t);
-        toast(`จด "${t}" ไว้แล้ว (ยังไม่มีสูตรรองรับ)`);
-      }
-    });
-    save(STORE_PANTRY, state.pantry);
-    save(STORE_CUSTOM, state.custom);
-    input.value = '';
-    const scroll = window.scrollY;
-    renderSettings();
-    window.scrollTo({ top: scroll });
-  };
-  document.getElementById('ing-add').onclick = addIng;
-  input.onkeydown = (e) => { if (e.key === 'Enter') addIng(); };
+  /* ---- ค้นหาส่วนผสม ---- */
+  const search = document.getElementById('ing-search');
+  const clearBtn = document.getElementById('search-clear');
+  const emptyMsg = document.getElementById('search-empty');
 
-  app.querySelectorAll('.custom-chip .x').forEach((b) => {
-    b.onclick = () => {
-      state.custom.splice(+b.dataset.i, 1);
-      save(STORE_CUSTOM, state.custom);
-      renderSettings();
-    };
-  });
+  const applyFilter = () => {
+    const q = normSearch(search.value);
+    let found = 0;
+    app.querySelectorAll('.cat').forEach((cat) => {
+      let shown = 0;
+      cat.querySelectorAll('.ing').forEach((b) => {
+        const hit = !q || b.dataset.search.includes(q);
+        b.hidden = !hit;
+        if (hit) shown++;
+      });
+      cat.hidden = shown === 0;
+      found += shown;
+    });
+    emptyMsg.hidden = found > 0;
+    clearBtn.hidden = !search.value;
+  };
+
+  search.oninput = applyFilter;
+  clearBtn.onclick = () => { search.value = ''; applyFilter(); search.focus(); };
+  applyFilter();
 }
 
-let toastTimer = null;
-function toast(msg) {
-  const t = document.getElementById('toast');
-  if (!t) return;
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+/* คำที่ใช้ค้นหาของวัตถุดิบแต่ละตัว (ไทย + อังกฤษ + คำพ้อง) */
+const normSearch = (s) => String(s).toLowerCase().replace(/\s+/g, '');
+function searchKey(ing) {
+  return normSearch([ing.th, ing.en, ...ing.syn].join('|'));
 }
 
 /* ---------------- router ---------------- */
