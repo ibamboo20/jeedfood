@@ -106,11 +106,16 @@ const FACE_DARK = new Set([
   'toast_avocado', 'curry', 'meatball', 'broccoli', 'tomato', 'strawberry',
   'mushroom', 'avocado_half', 'sausage', 'bacon', 'blueberry',
   'liver', 'beans', 'raisin', 'grapes', 'beef_slice', 'watermelon', 'bell_pepper',
+  'noodles', // กองเส้นลายเยอะ ถ้ามีชิ้นอื่นให้วางหน้าจะเห็นชัดกว่า
 ]);
 
-function face(kind) {
+/* อาหารที่มีลายเยอะ ต้องมีพื้นอ่อนรองหลังหน้าไม่งั้นตาจมหายไปกับลาย */
+const FACE_TEXTURED = new Set(['noodles', 'fried_rice', 'cereal', 'brown_rice', 'oat_blob', 'pasta_shell']);
+
+function face(kind, halo) {
   const f = FACE_KINDS[kind] || FACE_KINDS.smile;
-  return blush(-15.5) + blush(15.5) + f();
+  const bg = halo ? `<ellipse cx="0" cy="2" rx="23" ry="16" fill="#FFF6E2" opacity=".62"/>` : '';
+  return bg + blush(-15.5) + blush(15.5) + f();
 }
 
 /* จุดวางหน้าบนชิ้นอาหารแต่ละแบบ: [x, y, ขนาด] */
@@ -125,7 +130,7 @@ const FACE_ON = {
   yogurt_cup: [0, 5, 0.7], oat_blob: [0, -1, 0.8], smoothie: [0, 3, 0.66],
   milk_glass: [0, 4, 0.6],
   rice_mound: [0, -2, 0.85], rice_ball: [0, -8, 0.62], fried_rice: [0, -2, 0.85],
-  noodles: [0, 2, 0.85], pasta_shell: [14, 8, 0.5], curry: [0, -1, 0.8],
+  noodles: [0, 2, 0.66], pasta_shell: [14, 8, 0.5], curry: [0, -1, 0.8],
   nugget: [-4, -4, 0.52], meatball: [-14, 4, 0.55], sausage: [0, 0, 0.55],
   fish_fillet: [-2, 0, 0.7], chicken_drum: [10, -4, 0.55], shrimp: [-2, -2, 0.55],
   tofu: [-14, 0, 0.45], salmon: [-12, -1, 0.5], tuna_scoop: [-2, -1, 0.7],
@@ -405,11 +410,21 @@ ART.fried_rice = () =>
   C(-14, 0, 3.5, CL.green, 0) + C(6, -10, 3.5, CL.tomato, 0) + C(14, 6, 3.5, CL.cheese, 0) +
   C(-4, 8, 3.5, CL.green, 0) + C(2, -2, 3.5, CL.carrot, 0);
 
+/* เส้นก๋วยเตี๋ยว — กองเส้นพันกัน มีขอบเข้มทุกเส้นและปลายเส้นโผล่ ให้ดูออกว่าเป็นเส้น */
+const strand = (d, w = 8) => L(d, OUT, w + 4) + L(d, '#FFD782', w) + L(d, '#FFF0C4', Math.max(w - 5, 1.5));
+
 ART.noodles = () =>
-  E(0, 4, 32, 22, CL.noodle) +
-  L('M-22,-4 C-10,-14 10,6 22,-6', '#E0B95C', 4) +
-  L('M-22,8 C-10,-2 10,16 22,6', '#E0B95C', 4) +
-  L('M-14,-14 C-2,-20 8,-12 18,-16', '#E0B95C', 4);
+  // กองเส้นด้านหลัง
+  P('M-29,14 C-31,-2 -16,-15 0,-15 C16,-15 31,-2 29,14 C15,20 -15,20 -29,14 Z', '#D9A64E') +
+  // ปลายเส้นที่หลุดออกมาสองข้าง
+  strand('M-27,2 C-37,4 -38,14 -29,15', 6) +
+  strand('M27,-2 C37,0 38,10 29,13', 6) +
+  // เส้นพาดขวางกองในหลายทิศทาง
+  strand('M-28,8 C-16,-2 -2,12 10,2 C18,-4 25,0 29,5') +
+  strand('M-26,-4 C-14,-15 4,-2 18,-11 C23,-14 27,-13 29,-10') +
+  strand('M-20,16 C-6,7 8,18 26,9', 7) +
+  strand('M-16,-13 C-4,-21 8,-17 20,-19', 6.5) +
+  strand('M-6,-19 C2,-24 10,-22 14,-17', 5.5);
 
 ART.pasta_shell = () =>
   P('M-26,6 C-26,-10 -6,-16 2,-6 C8,2 0,14 -12,14 C-20,14 -26,12 -26,6 Z', CL.noodle) +
@@ -753,7 +768,7 @@ function drawBento(recipe, size) {
       const [fx, fy, fs] = FACE_ON[name];
       const kind = FACE_LIST[(seed + i * 3) % FACE_LIST.length];
       const fscale = Math.min(fs * 1.35, 0.95);
-      faces += `<g transform="${tf} translate(${fx} ${fy}) rotate(${-rot}) scale(${fscale.toFixed(2)})">${face(kind)}</g>`;
+      faces += `<g transform="${tf} translate(${fx} ${fy}) rotate(${-rot}) scale(${fscale.toFixed(2)})">${face(kind, FACE_TEXTURED.has(name))}</g>`;
     }
   });
 
@@ -787,7 +802,7 @@ function drawFood(recipe, size = 200) {
     if (i === heroIdx) {
       const [fx, fy, fs] = FACE_ON[name];
       // หมุนกลับให้หน้าตั้งตรงเสมอ
-      faceLayer = `<g transform="${tf} translate(${fx} ${fy}) rotate(${-rot}) scale(${(fs * 1.12).toFixed(2)})">${face(kind)}</g>`;
+      faceLayer = `<g transform="${tf} translate(${fx} ${fy}) rotate(${-rot}) scale(${(fs * 1.12).toFixed(2)})">${face(kind, FACE_TEXTURED.has(name))}</g>`;
     }
   });
 
