@@ -841,4 +841,10 @@ function mountDefs() {
 if (document.body) mountDefs();
 else document.addEventListener('DOMContentLoaded', mountDefs);
 
-window.FoodArt = { drawFood, drawIcon, ART, mountDefs };
+/* รูปแบบที่ฝัง <defs> ไว้ในตัวเอง ใช้ตอนส่งออกเป็นไฟล์ภาพ (นอกหน้าเว็บจะอ้าง url(#...) ไม่ได้) */
+function drawFoodStandalone(recipe, size = 400) {
+  const defs = DEFS.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+  return drawFood(recipe, size).replace(/^(<svg[^>]*>)/, `$1${defs}`);
+}
+
+window.FoodArt = { drawFood, drawIcon, drawFoodStandalone, ART, mountDefs };

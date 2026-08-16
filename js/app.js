@@ -7,10 +7,11 @@
 
 const { INGREDIENTS, CATEGORIES, ING_BY_KEY, englishFor } = window.Ingredients;
 const { BREAKFAST, LUNCH, DINNER } = window.Recipes;
-const { drawFood, drawIcon } = window.FoodArt;
+const { drawFood, drawIcon, drawFoodStandalone } = window.FoodArt;
 
 const STORE_PANTRY = 'jeedfood.pantry.v1';
 const STORE_SALT = 'jeedfood.salt.v1';
+const STORE_PICKED = 'jeedfood.picked.v1';
 
 const DEFAULT_PANTRY = ['egg', 'bread', 'sausage', 'milk', 'cheese', 'banana', 'rice', 'chicken', 'carrot', 'tomato'];
 
@@ -21,6 +22,8 @@ const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.�
 const state = {
   pantry: load(STORE_PANTRY, DEFAULT_PANTRY),
   salt: load(STORE_SALT, {}),
+  // เมนูที่ผู้ใช้เลือกไว้ มื้อละไม่เกิน 1 รายการ (ไม่เลือกก็ได้)
+  picked: load(STORE_PICKED, { breakfast: null, lunch: null, dinner: null }),
   meal: 'breakfast',
   query: '',
   view: 'home',
@@ -95,10 +98,30 @@ const normSearch = (s) => String(s).toLowerCase().replace(/\s+/g, '');
 
 /* ดัชนีค้นหาชื่ออาหารจากทุกเมนูในคลัง (คำนวณครั้งเดียวตอนเปิดแอป) */
 const MEAL_LABEL = { bf: '🌅 เช้า', ln: '🎒 กลางวัน', dn: '🌙 เย็น' };
+const MEAL_KEY = { bf: 'breakfast', ln: 'lunch', dn: 'dinner' };
+const MEALS = [
+  { key: 'breakfast', th: 'เช้า', en: 'Breakfast', emoji: '🌅' },
+  { key: 'lunch', th: 'กลางวัน', en: 'Lunch', emoji: '🎒' },
+  { key: 'dinner', th: 'เย็น', en: 'Dinner', emoji: '🌙' },
+];
 const ALL_RECIPES = [...BREAKFAST, ...LUNCH, ...DINNER].map((r) => Object.assign({}, r, {
   searchKey: normSearch(`${r.name}|${r.th}`),
   mealLabel: MEAL_LABEL[r.id.slice(0, 2)],
+  mealKey: MEAL_KEY[r.id.slice(0, 2)],
 }));
+
+const mealOf = (id) => MEAL_KEY[id.slice(0, 2)];
+const isPicked = (id) => state.picked[mealOf(id)] === id;
+
+/* เลือก/ยกเลิกเมนู — มื้อหนึ่งเก็บได้รายการเดียว เลือกใหม่ทับของเดิม */
+function togglePick(id) {
+  const meal = mealOf(id);
+  state.picked[meal] = state.picked[meal] === id ? null : id;
+  save(STORE_PICKED, state.picked);
+}
+const pickedList = () => MEALS
+  .map((m) => ({ meal: m, recipe: state.picked[m.key] ? findRecipe(state.picked[m.key]) : null }))
+  .filter((x) => x.recipe);
 
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -177,25 +200,48 @@ function renderHomeBody() {
   if (!body) return;
 
   const q = normSearch(state.query);
-  body.innerHTML = q ? searchView(q) : dailyView();
+  body.innerHTML = pickedBar() + (q ? searchView(q) : dailyView());
 
   body.querySelectorAll('.tab').forEach((t) => {
     t.onclick = () => { state.meal = t.dataset.meal; renderHomeBody(); window.scrollTo({ top: 0 }); };
   });
   const strip = body.querySelector('#pantry-strip');
   if (strip) strip.onclick = () => go('settings');
+
   body.querySelectorAll('.card').forEach((c) => {
     c.onclick = () => go('recipe', c.dataset.id);
+    c.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('recipe', c.dataset.id); }
+    };
   });
+  body.querySelectorAll('.card-pick').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();          // ไม่ให้ทะลุไปเปิดหน้ารายละเอียด
+      togglePick(b.dataset.pick);
+      renderHomeBody();
+    };
+  });
+  const bar = document.getElementById('picked-bar');
+  if (bar) bar.onclick = () => go('save');
+}
+
+/* แถบสรุปเมนูที่เลือกไว้ กดแล้วไปหน้าบันทึก */
+function pickedBar() {
+  const picks = pickedList();
+  if (!picks.length) return '';
+  const chips = picks.map((p) =>
+    `<span class="pick-chip">${p.meal.emoji} ${p.recipe.th}</span>`).join('');
+  return `
+    <button class="picked-bar" id="picked-bar">
+      <span class="picked-count">เลือกแล้ว ${picks.length}/3 มื้อ</span>
+      <span class="picked-chips">${chips}</span>
+      <span class="picked-go">💾 บันทึกเมนู ›</span>
+    </button>`;
 }
 
 /* มุมมองปกติ: เมนูประจำวันแยกตามมื้อ */
 function dailyView() {
-  const meals = [
-    { key: 'breakfast', th: 'เช้า', en: 'Breakfast', emoji: '🌅' },
-    { key: 'lunch', th: 'กลางวัน', en: 'Lunch', emoji: '🎒' },
-    { key: 'dinner', th: 'เย็น', en: 'Dinner', emoji: '🌙' },
-  ];
+  const meals = MEALS;
   const note = {
     breakfast: 'อาหารเช้าสไตล์ฝรั่งง่าย ๆ จากวัตถุดิบที่บ้านมี',
     lunch: 'กล่องข้าวกลางวัน หยิบทานง่าย รวดเร็ว',
@@ -263,15 +309,20 @@ function card(s) {
     ? `<span class="miss">ขาด ${s.missing.map((k) => ING_BY_KEY[k].th).join(', ')}</span>`
     : '';
   const meal = s.meal ? `<span class="card-meal">${s.meal}</span>` : '';
+  const on = isPicked(r.id);
   return `
-    <button class="card" data-id="${r.id}">
-      <div class="card-art">${drawFood(r, 150)}</div>
+    <div class="card ${on ? 'picked' : ''}" data-id="${r.id}" role="button" tabindex="0">
+      <div class="card-art">
+        ${drawFood(r, 150)}
+        <button class="card-pick" data-pick="${r.id}" aria-pressed="${on}"
+                title="${on ? 'เอาออกจากที่เลือก' : 'เลือกเมนูนี้'}">${on ? '✓' : '+'}</button>
+      </div>
       <div class="card-body">
         <div class="card-name">${r.name}</div>
         <div class="card-th">${r.th}</div>
         <div class="card-meta">${meal}<span class="time">⏱ ${r.time} นาที</span>${miss}</div>
       </div>
-    </button>`;
+    </div>`;
 }
 
 /* ---------------- render: หน้ารายละเอียดเมนู ---------------- */
@@ -295,6 +346,9 @@ function renderRecipe(id) {
         <span class="chip-info">⏱ ${r.time} นาที</span>
         <span class="chip-info">${mealLabel(r.id)}</span>
       </div>
+      <button class="pick-btn ${isPicked(r.id) ? 'on' : ''}" id="btn-pick">
+        ${isPicked(r.id) ? '✓ เลือกไว้แล้ว — แตะเพื่อเอาออก' : '＋ เลือกเมนูนี้'}
+      </button>
     </div>
 
     <section class="panel good">
@@ -328,12 +382,245 @@ function renderRecipe(id) {
     <div class="pad"></div>
   `;
   document.getElementById('btn-back').onclick = () => go('home');
+  document.getElementById('btn-pick').onclick = () => { togglePick(r.id); renderRecipe(id); };
 }
 
 function mealLabel(id) {
   if (id.startsWith('bf')) return '🌅 อาหารเช้า';
   if (id.startsWith('ln')) return '🎒 อาหารกลางวัน';
   return '🌙 อาหารเย็น';
+}
+
+/* ---------------- render: หน้าบันทึกเมนูที่เลือก ---------------- */
+function renderSave() {
+  const picks = pickedList();
+
+  app.innerHTML = `
+    <header class="topbar sub no-print">
+      <button class="icon-btn" id="btn-back" aria-label="ย้อนกลับ">←</button>
+      <h2 class="sub-title">เมนูที่เลือกไว้</h2>
+      <span class="spacer"></span>
+    </header>
+
+    ${!picks.length ? `
+      <p class="search-empty">ยังไม่ได้เลือกเมนูเลย<br>
+        <span class="muted small">กลับไปหน้าหลักแล้วกดปุ่ม ＋ ที่มุมรูปอาหาร เพื่อเลือกมื้อละ 1 เมนู</span>
+      </p>` : `
+      <div class="save-actions no-print">
+        <button class="save-btn primary" id="btn-png">🖼️ บันทึกเป็นรูป</button>
+        <button class="save-btn" id="btn-pdf">📄 บันทึกเป็น PDF</button>
+        <button class="ghost-btn" id="btn-clear-picks">ล้างที่เลือก</button>
+      </div>
+      <p class="save-hint no-print" id="save-hint">
+        เลือกไว้ ${picks.length} มื้อ — “บันทึกเป็นรูป” จะได้ไฟล์ PNG ส่วน “บันทึกเป็น PDF” จะเปิดหน้าต่างพิมพ์ ให้เลือกปลายทางเป็น <b>Save as PDF</b>
+      </p>
+
+      <div id="print-area">
+        <div class="sheet-head">
+          <h1 class="sheet-title">🍳 เมนูของหนู</h1>
+          <p class="sheet-date">${todayLabel()}</p>
+        </div>
+        ${picks.map(({ meal, recipe: r }) => `
+          <section class="sheet-card">
+            <div class="sheet-meal">${meal.emoji} ${meal.en} · ${meal.th}</div>
+            <div class="sheet-top">
+              <div class="sheet-art">${drawFood(r, 150)}</div>
+              <div>
+                <h2 class="sheet-name">${r.name}</h2>
+                <p class="sheet-th">${r.th}</p>
+                <p class="sheet-time">⏱ ${r.time} นาที</p>
+                <p class="sheet-good">${r.good}</p>
+              </div>
+            </div>
+            <div class="sheet-cols">
+              <div>
+                <h3>🧺 ส่วนผสม</h3>
+                <ul>${r.ing.map((i) => {
+                  const en = englishFor(i);
+                  return `<li>${i}${en ? ` <em>(${en})</em>` : ''}</li>`;
+                }).join('')}</ul>
+              </div>
+              <div>
+                <h3>👩‍🍳 วิธีทำ</h3>
+                <ol>${r.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
+              </div>
+            </div>
+          </section>`).join('')}
+        <p class="sheet-foot">สร้างจากแอป JeedFood 🌈</p>
+      </div>
+    `}
+    <div class="pad no-print"></div>
+  `;
+
+  document.getElementById('btn-back').onclick = () => go('home');
+  if (!picks.length) return;
+
+  document.getElementById('btn-clear-picks').onclick = () => {
+    state.picked = { breakfast: null, lunch: null, dinner: null };
+    save(STORE_PICKED, state.picked);
+    renderSave();
+  };
+  document.getElementById('btn-pdf').onclick = () => window.print();
+  document.getElementById('btn-png').onclick = () => exportPng(picks);
+}
+
+/* ---------------- ส่งออกเป็นไฟล์ PNG (วาดเองด้วย canvas) ---------------- */
+const PNG_W = 900;
+const FONT = '"Noto Sans Thai", "Sukhumvit Set", -apple-system, system-ui, sans-serif';
+
+/* ตัดบรรทัดข้อความ — ภาษาไทยไม่มีช่องว่าง จึงต้องตัดทีละอักขระเมื่อคำยาวเกิน */
+function wrapText(ctx, text, maxW) {
+  const lines = [];
+  let line = '';
+  for (const word of String(text).split(' ')) {
+    const trial = line ? line + ' ' + word : word;
+    if (ctx.measureText(trial).width <= maxW) { line = trial; continue; }
+    if (line) { lines.push(line); line = ''; }
+    let chunk = '';
+    for (const ch of word) {
+      if (ctx.measureText(chunk + ch).width > maxW && chunk) { lines.push(chunk); chunk = ''; }
+      chunk += ch;
+    }
+    line = chunk;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function svgToImage(svg) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+
+async function exportPng(picks) {
+  const hint = document.getElementById('save-hint');
+  const btn = document.getElementById('btn-png');
+  btn.disabled = true;
+  const oldHint = hint.innerHTML;
+  hint.textContent = 'กำลังสร้างรูป…';
+
+  try {
+    const images = await Promise.all(picks.map((p) => svgToImage(drawFoodStandalone(p.recipe, 300))));
+
+    const scale = 2;                       // ความละเอียด 2 เท่า ให้ภาพคมบนจอมือถือ
+    const measure = document.createElement('canvas').getContext('2d');
+    const pad = 34, artW = 170, gap = 22;
+    const textW = PNG_W - pad * 2 - artW - gap;
+
+    // รอบแรก: คำนวณความสูงที่ต้องใช้
+    const blocks = picks.map((p) => {
+      const r = p.recipe;
+      measure.font = `400 17px ${FONT}`;
+      const good = wrapText(measure, r.good, textW);
+      const ing = r.ing.map((i) => {
+        const en = englishFor(i);
+        return wrapText(measure, '•  ' + i + (en ? ` (${en})` : ''), textW + artW + gap - 20);
+      });
+      const steps = r.steps.map((s, i) => wrapText(measure, `${i + 1}. ${s}`, textW + artW + gap - 20));
+      const topH = Math.max(artW, 34 + 26 + 24 + good.length * 24) + 10;
+      const listH = 34 + ing.flat().length * 26 + 22 + 34 + steps.flat().length * 26;
+      return { p, good, ing, steps, h: topH + listH + 40 };
+    });
+
+    const headH = 110;
+    const total = headH + blocks.reduce((s, b) => s + b.h + 18, 0) + 50;
+
+    const cv = document.createElement('canvas');
+    cv.width = PNG_W * scale;
+    cv.height = total * scale;
+    const ctx = cv.getContext('2d');
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#FEFBFB'; ctx.fillRect(0, 0, PNG_W, total);
+    ctx.fillStyle = '#FDEDF6'; ctx.fillRect(0, 0, PNG_W, headH);
+
+    ctx.fillStyle = '#4A342A';
+    ctx.font = `800 34px ${FONT}`;
+    ctx.fillText('🍳 เมนูของหนู', pad, 52);
+    ctx.font = `400 18px ${FONT}`;
+    ctx.fillStyle = '#8A6A5E';
+    ctx.fillText(todayLabel(), pad, 84);
+
+    let y = headH + 24;
+    blocks.forEach((b, idx) => {
+      const r = b.p.recipe;
+      const top = y;
+
+      ctx.fillStyle = '#FFFFFF';
+      roundRect(ctx, pad - 14, top - 14, PNG_W - (pad - 14) * 2, b.h, 20);
+      ctx.fill();
+      ctx.strokeStyle = '#4A342A'; ctx.lineWidth = 3; ctx.stroke();
+
+      ctx.drawImage(images[idx], pad, top, artW, artW);
+
+      const tx = pad + artW + gap;
+      ctx.fillStyle = '#A05CA0';
+      ctx.font = `700 16px ${FONT}`;
+      ctx.fillText(`${b.p.meal.emoji} ${b.p.meal.en} · ${b.p.meal.th}`, tx, top + 18);
+
+      ctx.fillStyle = '#4A342A';
+      ctx.font = `800 24px ${FONT}`;
+      ctx.fillText(r.name, tx, top + 50);
+      ctx.font = `400 19px ${FONT}`;
+      ctx.fillStyle = '#8A6A5E';
+      ctx.fillText(`${r.th}  ·  ⏱ ${r.time} นาที`, tx, top + 78);
+
+      ctx.font = `400 17px ${FONT}`;
+      let ty = top + 106;
+      b.good.forEach((l) => { ctx.fillText(l, tx, ty); ty += 24; });
+
+      let ly = top + Math.max(artW, ty - top) + 26;
+      ctx.fillStyle = '#4A342A';
+      ctx.font = `800 19px ${FONT}`;
+      ctx.fillText('🧺 ส่วนผสม', pad, ly);
+      ly += 30;
+      ctx.font = `400 17px ${FONT}`;
+      b.ing.flat().forEach((l) => { ctx.fillText(l, pad, ly); ly += 26; });
+
+      ly += 18;
+      ctx.font = `800 19px ${FONT}`;
+      ctx.fillText('👩‍🍳 วิธีทำ', pad, ly);
+      ly += 30;
+      ctx.font = `400 17px ${FONT}`;
+      b.steps.flat().forEach((l) => { ctx.fillText(l, pad, ly); ly += 26; });
+
+      y += b.h + 18;
+    });
+
+    ctx.fillStyle = '#8A6A5E';
+    ctx.font = `400 16px ${FONT}`;
+    ctx.fillText('สร้างจากแอป JeedFood 🌈', pad, total - 22);
+
+    const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `jeedfood-${todayKey()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    hint.innerHTML = 'บันทึกรูปเรียบร้อย ✓ (ดูในโฟลเดอร์ดาวน์โหลด)';
+  } catch (err) {
+    hint.innerHTML = 'สร้างรูปไม่สำเร็จ: ' + err.message + ' — ลองใช้ปุ่ม PDF แทนได้';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { if (hint.isConnected) hint.innerHTML = oldHint; }, 6000);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 /* ---------------- render: หน้าตั้งค่า ---------------- */
@@ -441,7 +728,10 @@ function searchKey(ing) {
 
 /* ---------------- router ---------------- */
 function go(view, id) {
-  const hash = view === 'home' ? '#/' : view === 'settings' ? '#/settings' : `#/r/${id}`;
+  const hash = view === 'home' ? '#/'
+    : view === 'settings' ? '#/settings'
+    : view === 'save' ? '#/save'
+    : `#/r/${id}`;
   if (location.hash !== hash) location.hash = hash;
   else route();
 }
@@ -451,6 +741,7 @@ function route() {
   window.scrollTo({ top: 0 });
   if (h.startsWith('#/r/')) return renderRecipe(h.slice(4));
   if (h === '#/settings') return renderSettings();
+  if (h === '#/save') return renderSave();
   return renderHome();
 }
 

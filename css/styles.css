@@ -494,6 +494,147 @@ html, body {
 .ing.on { background: var(--mint-pale); transform: translateY(-2px); }
 .ing.on .ing-check { transform: scale(1); }
 
+/* ---------------- เลือกเมนู ---------------- */
+.card-art { position: relative; }
+.card-pick {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  font-size: 17px;
+  font-weight: 900;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--white);
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 0 3px 0 rgba(74,52,42,.15);
+  cursor: pointer;
+  z-index: 2;
+}
+.card-pick:active { transform: translateY(2px); box-shadow: none; }
+.card.picked { border-color: var(--pink); box-shadow: 0 6px 0 var(--pink-soft); }
+.card.picked .card-pick { background: var(--mint); }
+
+.pick-btn {
+  margin-top: 14px;
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 15.5px;
+  font-weight: 800;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--pink-pale);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.pick-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(74,52,42,.12); }
+.pick-btn.on { background: var(--mint); }
+
+.picked-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--mint);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 11px 14px;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+.picked-bar:active { transform: translateY(2px); }
+.picked-count { font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+.picked-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.pick-chip {
+  font-size: 12px;
+  background: var(--white);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.picked-go { font-size: 13.5px; font-weight: 800; color: #7A4B62; white-space: nowrap; }
+
+/* ---------------- หน้าบันทึกเมนู ---------------- */
+.save-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 10px; }
+.save-btn {
+  padding: 12px 18px;
+  font-size: 15px;
+  font-weight: 800;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--white);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.save-btn.primary { background: var(--pink); }
+.save-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(74,52,42,.12); }
+.save-btn:disabled { opacity: .55; cursor: default; }
+.save-hint { margin: 0 2px 16px; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+
+.sheet-head { text-align: center; margin-bottom: 14px; }
+.sheet-title { margin: 0; font-size: 24px; color: var(--pink); }
+.sheet-date { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+
+.sheet-card {
+  background: var(--white);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  break-inside: avoid;
+}
+.sheet-meal {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 800;
+  background: var(--orchid-pale);
+  border: 2px solid var(--orchid);
+  border-radius: 999px;
+  padding: 2px 12px;
+  margin-bottom: 10px;
+}
+.sheet-top { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.sheet-art {
+  flex: 0 0 auto;
+  background: var(--pink-pale);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  overflow: hidden;
+  line-height: 0;
+}
+.sheet-name { margin: 0; font-size: 19px; }
+.sheet-th { margin: 3px 0 0; font-size: 14.5px; color: var(--ink-soft); }
+.sheet-time { margin: 6px 0 0; font-size: 13px; color: var(--ink-soft); }
+.sheet-good { margin: 8px 0 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-soft); }
+
+.sheet-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+@media (max-width: 620px) { .sheet-cols { grid-template-columns: 1fr; gap: 12px; } }
+.sheet-cols h3 { margin: 0 0 6px; font-size: 15px; }
+.sheet-cols ul, .sheet-cols ol { margin: 0; padding-left: 20px; }
+.sheet-cols li { font-size: 13.5px; line-height: 1.75; }
+.sheet-cols em { font-style: normal; color: #A05CA0; font-size: 12.5px; }
+.sheet-foot { text-align: center; font-size: 12.5px; color: var(--ink-soft); margin: 18px 0 0; }
+
+/* ---------------- ตอนสั่งพิมพ์ / บันทึกเป็น PDF ---------------- */
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #fff !important; }
+  .app { max-width: none; padding: 0; }
+  .sheet-card { box-shadow: none; page-break-inside: avoid; }
+  .sheet-art { box-shadow: none; }
+}
+
 .pad { height: 26px; }
 
 @media (prefers-reduced-motion: reduce) {
