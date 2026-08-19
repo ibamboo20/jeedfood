@@ -11,19 +11,48 @@ const { drawFood, drawIcon, drawFoodStandalone } = window.FoodArt;
 
 const STORE_PANTRY = 'jeedfood.pantry.v1';
 const STORE_SALT = 'jeedfood.salt.v1';
-const STORE_PICKED = 'jeedfood.picked.v1';
+const STORE_PICKED = 'jeedfood.picked.v1';   // รูปแบบเก่า เก็บชุดเดียวไม่แยกวัน
+const STORE_PLANS = 'jeedfood.plans.v1';     // รูปแบบใหม่ แยกตามวันที่
 
 const DEFAULT_PANTRY = ['egg', 'bread', 'sausage', 'milk', 'cheese', 'banana', 'rice', 'chicken', 'carrot', 'tomato'];
 
 const TH_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
+/* ---------------- วันที่ ---------------- */
+const keyOf = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayKey = () => keyOf(new Date());
+const parseKey = (k) => {
+  const [y, m, d] = k.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const shiftKey = (k, days) => {
+  const d = parseKey(k);
+  d.setDate(d.getDate() + days);
+  return keyOf(d);
+};
+function dateLabel(key) {
+  const d = parseKey(key);
+  return `วัน${TH_DAYS[d.getDay()]}ที่ ${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
+}
+/* ป้ายบอกว่าใกล้วันนี้แค่ไหน เช่น วันนี้ / พรุ่งนี้ / อีก 3 วัน */
+function relativeLabel(key) {
+  const diff = Math.round((parseKey(key) - parseKey(todayKey())) / 86400000);
+  if (diff === 0) return 'วันนี้';
+  if (diff === 1) return 'พรุ่งนี้';
+  if (diff === 2) return 'มะรืนนี้';
+  if (diff === -1) return 'เมื่อวาน';
+  return diff > 0 ? `อีก ${diff} วัน` : `${-diff} วันก่อน`;
+}
+
 /* ---------------- state ---------------- */
 const state = {
   pantry: load(STORE_PANTRY, DEFAULT_PANTRY),
   salt: load(STORE_SALT, {}),
-  // เมนูที่ผู้ใช้เลือกไว้ มื้อละไม่เกิน 1 รายการ (ไม่เลือกก็ได้)
-  picked: load(STORE_PICKED, { breakfast: null, lunch: null, dinner: null }),
+  // แผนมื้ออาหารแยกตามวัน { 'YYYY-MM-DD': { breakfast, lunch, dinner } } มื้อละไม่เกิน 1 เมนู
+  plans: load(STORE_PLANS, {}),
+  date: todayKey(),
   meal: 'breakfast',
   query: '',
   view: 'home',
@@ -56,20 +85,11 @@ function mulberry32(a) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function todayLabel() {
-  const d = new Date();
-  return `วัน${TH_DAYS[d.getDay()]}ที่ ${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
-}
-
-/* เลือกเมนูประจำวัน 9 รายการ */
+/* เลือกเมนูประจำวัน 9 รายการ (ยึดตามวันที่ผู้ใช้เลือก) */
 function pickDaily(pool, mealName, n = 9) {
   const pantry = state.pantry;
-  const salt = state.salt[todayKey()] || 0;
-  const rng = mulberry32(hashStr(`${todayKey()}|${mealName}|${salt}`));
+  const salt = state.salt[state.date] || 0;
+  const rng = mulberry32(hashStr(`${state.date}|${mealName}|${salt}`));
 
   const scored = pool.map((r) => ({
     r,
@@ -110,18 +130,37 @@ const ALL_RECIPES = [...BREAKFAST, ...LUNCH, ...DINNER].map((r) => Object.assign
   mealKey: MEAL_KEY[r.id.slice(0, 2)],
 }));
 
+const EMPTY_PLAN = { breakfast: null, lunch: null, dinner: null };
 const mealOf = (id) => MEAL_KEY[id.slice(0, 2)];
-const isPicked = (id) => state.picked[mealOf(id)] === id;
+const planOf = (dateKey) => state.plans[dateKey] || EMPTY_PLAN;
+const isPicked = (id) => planOf(state.date)[mealOf(id)] === id;
 
-/* เลือก/ยกเลิกเมนู — มื้อหนึ่งเก็บได้รายการเดียว เลือกใหม่ทับของเดิม */
+/* เลือก/ยกเลิกเมนูของวันที่กำลังดูอยู่ — มื้อหนึ่งเก็บได้รายการเดียว เลือกใหม่ทับของเดิม */
 function togglePick(id) {
   const meal = mealOf(id);
-  state.picked[meal] = state.picked[meal] === id ? null : id;
-  save(STORE_PICKED, state.picked);
+  const p = Object.assign({}, EMPTY_PLAN, state.plans[state.date]);
+  p[meal] = p[meal] === id ? null : id;
+  if (!p.breakfast && !p.lunch && !p.dinner) delete state.plans[state.date];
+  else state.plans[state.date] = p;
+  save(STORE_PLANS, state.plans);
 }
-const pickedList = () => MEALS
-  .map((m) => ({ meal: m, recipe: state.picked[m.key] ? findRecipe(state.picked[m.key]) : null }))
-  .filter((x) => x.recipe);
+const pickedList = (dateKey = state.date) => {
+  const p = planOf(dateKey);
+  return MEALS
+    .map((m) => ({ meal: m, recipe: p[m.key] ? findRecipe(p[m.key]) : null }))
+    .filter((x) => x.recipe);
+};
+
+/* ย้ายข้อมูลจากรูปแบบเก่า (ไม่แยกวัน) มาเป็นแผนของวันนี้ */
+(function migratePicked() {
+  const old = load(STORE_PICKED, null);
+  if (!old) return;
+  if ((old.breakfast || old.lunch || old.dinner) && !state.plans[todayKey()]) {
+    state.plans[todayKey()] = Object.assign({}, EMPTY_PLAN, old);
+    save(STORE_PLANS, state.plans);
+  }
+  try { localStorage.removeItem(STORE_PICKED); } catch (e) { /* โหมดส่วนตัว */ }
+})();
 
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -151,11 +190,18 @@ function renderHome() {
     </header>
 
     <div class="datebar">
-      <div>
-        <span class="date-badge">เมนูวันนี้</span>
-        <span class="date-text">${todayLabel()}</span>
+      <div class="date-line">
+        <button class="date-nav" id="date-prev" aria-label="วันก่อนหน้า">‹</button>
+        <input type="date" id="date-input" value="${state.date}" aria-label="เลือกวันที่">
+        <button class="date-nav" id="date-next" aria-label="วันถัดไป">›</button>
+        <span class="date-badge">${relativeLabel(state.date)}</span>
       </div>
-      <button class="ghost-btn" id="btn-reroll">🎲 สุ่มใหม่</button>
+      <div class="date-line">
+        <span class="date-text">${dateLabel(state.date)}</span>
+        <span class="spacer"></span>
+        ${state.date !== todayKey() ? '<button class="ghost-btn" id="btn-today">↩︎ วันนี้</button>' : ''}
+        <button class="ghost-btn" id="btn-reroll">🎲 สุ่มใหม่</button>
+      </div>
     </div>
 
     <div class="search-row">
@@ -170,11 +216,20 @@ function renderHome() {
 
   document.getElementById('btn-settings').onclick = () => go('settings');
   document.getElementById('btn-reroll').onclick = () => {
-    const k = todayKey();
-    state.salt[k] = (state.salt[k] || 0) + 1;
+    state.salt[state.date] = (state.salt[state.date] || 0) + 1;
     save(STORE_SALT, state.salt);
     renderHomeBody();
   };
+
+  /* ---- เลือกวันที่ ---- */
+  const goToDate = (key) => { state.date = key; renderHome(); };
+  document.getElementById('date-prev').onclick = () => goToDate(shiftKey(state.date, -1));
+  document.getElementById('date-next').onclick = () => goToDate(shiftKey(state.date, 1));
+  document.getElementById('date-input').onchange = (e) => {
+    if (e.target.value) goToDate(e.target.value);
+  };
+  const todayBtn = document.getElementById('btn-today');
+  if (todayBtn) todayBtn.onclick = () => goToDate(todayKey());
 
   const search = document.getElementById('home-search');
   const clearBtn = document.getElementById('home-search-clear');
@@ -233,7 +288,7 @@ function pickedBar() {
     `<span class="pick-chip">${p.meal.emoji} ${p.recipe.th}</span>`).join('');
   return `
     <button class="picked-bar" id="picked-bar">
-      <span class="picked-count">เลือกแล้ว ${picks.length}/3 มื้อ</span>
+      <span class="picked-count">แผนมื้ออาหาร${relativeLabel(state.date)} ${picks.length}/3 มื้อ</span>
       <span class="picked-chips">${chips}</span>
       <span class="picked-go">💾 บันทึกเมนู ›</span>
     </button>`;
@@ -418,7 +473,7 @@ function renderSave() {
       <div id="print-area">
         <div class="sheet-head">
           <h1 class="sheet-title">🍳 เมนูของหนู</h1>
-          <p class="sheet-date">${todayLabel()}</p>
+          <p class="sheet-date">${relativeLabel(state.date)} · ${dateLabel(state.date)}</p>
         </div>
         ${picks.map(({ meal, recipe: r }) => `
           <section class="sheet-card">
@@ -456,8 +511,8 @@ function renderSave() {
   if (!picks.length) return;
 
   document.getElementById('btn-clear-picks').onclick = () => {
-    state.picked = { breakfast: null, lunch: null, dinner: null };
-    save(STORE_PICKED, state.picked);
+    delete state.plans[state.date];
+    save(STORE_PLANS, state.plans);
     renderSave();
   };
   document.getElementById('btn-pdf').onclick = () => window.print();
@@ -543,7 +598,7 @@ async function exportPng(picks) {
     ctx.fillText('🍳 เมนูของหนู', pad, 52);
     ctx.font = `400 18px ${FONT}`;
     ctx.fillStyle = '#8A6A5E';
-    ctx.fillText(todayLabel(), pad, 84);
+    ctx.fillText(`${relativeLabel(state.date)} · ${dateLabel(state.date)}`, pad, 84);
 
     let y = headH + 24;
     blocks.forEach((b, idx) => {
@@ -599,7 +654,7 @@ async function exportPng(picks) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `jeedfood-${todayKey()}.png`;
+    a.download = `jeedfood-${state.date}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
